@@ -1,6 +1,8 @@
 using System;
-using System.Collections.ObjectModel;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace Panosen.Id3.Frames
 {
@@ -30,18 +32,33 @@ namespace Panosen.Id3.Frames
 
         public string Description { get; set; }
 
-        public Id3Language Language { get; set; } = Id3Language.eng;
+        public string Language { get; set; }
 
         public string Lyrics { get; set; }
 
         public static implicit operator LyricsFrame(string lyrics) => new LyricsFrame(lyrics);
     }
-
-    public sealed class LyricsFrameList : Collection<LyricsFrame>
+    public class LyricsHandler : FrameHandler<LyricsFrame>
     {
-        public void Add(string lyrics, string description)
+        protected override void OnEncode(LyricsFrame frame, List<byte> bytes)
         {
-            Add(new LyricsFrame(lyrics, description));
+            throw new NotImplementedException();
+        }
+
+        protected override void OnDecode(byte[] bytes, LyricsFrame frame)
+        {
+            //frame.Language = Encoding.ASCII.GetString(bytes, 1, 3);
+
+            //string[] splitStrings = TextEncodingHelper.GetSplitStrings(bytes, 4, bytes.Length - 4, frame.Encoding);
+            //if (splitStrings.Length > 1)
+            //{
+            //    frame.Description = splitStrings[0];
+            //    frame.Lyrics = splitStrings[1];
+            //}
+            //else if (splitStrings.Length == 1)
+            //{
+            //    frame.Lyrics = splitStrings[0];
+            //}
         }
     }
 }

@@ -7,18 +7,20 @@ using Newtonsoft.Json;
 
 namespace Panosen.Id3.MSTest
 {
-    //[TestClass]
+    [TestClass]
     public class UnitTest1
     {
-
-        //[TestMethod]
+        [TestMethod]
         public void TestMethod1()
         {
             string folder = @"G:\tmp001";
 
             List<string> files = new List<string>();
-            files.Add("music001");
-            files.Add("music002");
+            //files.Add("music001");
+            //files.Add("music002");
+            //files.Add("music003");
+            //files.Add("music004");
+            //files.Add("music005");
 
             var settings = new JsonSerializerSettings();
             settings.Converters.Add(new EncodingConverter());
@@ -28,21 +30,26 @@ namespace Panosen.Id3.MSTest
             {
                 var path = Path.Combine(folder, file + ".mp3");
 
+                Id3V23 id3v23;
+                byte[] auditBytes;
                 using (Mp3File mp3File = new Mp3File(path))
                 {
-                    var id3v1Bytes = mp3File.Mp3Stream.GetAllV1TagBytes();
-                    var id3v23Bytes = mp3File.Mp3Stream.GetAllV23TagBytes();
-                    var audioBytes = mp3File.GetAudioBytes();
+                    id3v23 = mp3File.Mp3Stream.ReadId3V23FromStream();
+                    auditBytes = mp3File.GetAudioBytes();
+                }
 
-                    Assert.AreEqual(mp3File.Mp3Stream.Length, id3v1Bytes.Length + id3v23Bytes.Length + audioBytes.Length);
+                File.WriteAllText(Path.Combine(folder, file + "-id3v2.txt"), JsonConvert.SerializeObject(id3v23, Formatting.Indented, settings));
 
-                    var v1Tags = mp3File.Mp3Stream.ReadAllV1Tags();
-                    File.WriteAllText(Path.Combine(folder, file + "-id3v1.tx"), JsonConvert.SerializeObject(v1Tags, Formatting.Indented, settings));
+                    var stream = id3v23.WriteId3V23ToStream();
 
-                    var v23Tags = mp3File.Mp3Stream.ReadAllV23Tags();
-                    File.WriteAllText(Path.Combine(folder, file + "-id3v2.tx"), JsonConvert.SerializeObject(v23Tags, Formatting.Indented, settings));
+                var newPath = Path.Combine(folder, file + "-2.mp3");
+                using (FileStream fileStream = new FileStream(newPath, FileMode.Create, FileAccess.Write))
+                {
+                    stream.CopyTo(fileStream);
 
-                    var zz = 0;
+                    fileStream.Write(auditBytes);
+
+                    fileStream.Flush();
                 }
             }
         }

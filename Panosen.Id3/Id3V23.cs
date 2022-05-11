@@ -3,8 +3,16 @@ using System.Collections.Generic;
 
 namespace Panosen.Id3
 {
-    public sealed class Id3V2
+    /// <summary>
+    /// Id3v2.3
+    /// </summary>
+    public sealed class Id3V23
     {
+        /// <summary>
+        /// 长度
+        /// </summary>
+        public int BytesLength { get; set; }
+
         /// <summary>
         /// [Standard]Experimental
         /// </summary>
@@ -16,9 +24,14 @@ namespace Panosen.Id3
         public bool ExtendedHeader { get; set; }
 
         /// <summary>
-        /// [Standard]Revision
+        /// [Standard]MajorVersion
         /// </summary>
-        public int Revision { get; set; }
+        public byte MajorVersion { get; set; }
+
+        /// <summary>
+        /// [Standard]RevisionVersion
+        /// </summary>
+        public byte RevisionVersion { get; set; }
 
         /// <summary>
         /// [Standard]Unsyncronization

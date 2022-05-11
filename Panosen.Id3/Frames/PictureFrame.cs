@@ -1,7 +1,9 @@
 using System;
-using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace Panosen.Id3.Frames
 {
@@ -55,10 +57,6 @@ namespace Panosen.Id3.Frames
         public PictureType PictureType { get; set; }
     }
 
-    public sealed class PictureFrameList : Collection<PictureFrame>
-    {
-    }
-
     public enum PictureType : byte
     {
         Other = 0x00,
@@ -82,5 +80,55 @@ namespace Panosen.Id3.Frames
         Illustration = 0x12,
         BandOrArtistLogotype = 0x13,
         PublisherOrStudioLogotype = 0x14
+    }
+    public class PictureHandler : FrameHandler<PictureFrame>
+    {
+        protected override void OnEncode(PictureFrame frame, List<byte> bytes)
+        {
+            Id3Encoding defaultEncoding = Id3Encoding.ISO88591;
+            bytes.AddRange(!string.IsNullOrEmpty(frame.MimeType)
+                ? defaultEncoding.GetBytes(frame.MimeType)
+                : defaultEncoding.GetBytes("image/"));
+
+            bytes.Add(0);
+            bytes.Add((byte)frame.PictureType);
+
+            Id3Encoding descriptionEncoding = Id3Encoding.ISO88591;
+            bytes.AddRange(descriptionEncoding.GetPreamble());
+            if (!string.IsNullOrEmpty(frame.Description))
+                bytes.AddRange(descriptionEncoding.GetBytes(frame.Description));
+            bytes.AddRange(TextEncodingHelper.GetSplitterBytes(Id3Encoding.ISO88591));
+
+            if (frame.PictureData != null && frame.PictureData.Length > 0)
+                bytes.AddRange(frame.PictureData);
+        }
+
+        protected override void OnDecode(byte[] bytes, PictureFrame frame)
+        {
+            byte[] mimeType = ByteArrayHelper.GetBytesUptoSequence(bytes, 1, new byte[] { 0x00 });
+            if (mimeType == null)
+            {
+                frame.MimeType = "image/";
+                return;
+            }
+
+            frame.MimeType = TextEncodingHelper.GetDefaultString(mimeType, 0, mimeType.Length);
+
+            int currentPos = mimeType.Length + 2;
+            frame.PictureType = (PictureType)bytes[currentPos];
+
+            currentPos++;
+            byte[] description = ByteArrayHelper.GetBytesUptoSequence(bytes, currentPos,
+                TextEncodingHelper.GetSplitterBytes(Id3Encoding.ISO88591));
+            if (description == null)
+            {
+                return;
+            }
+            frame.Description = TextEncodingHelper.GetString(description, 0, description.Length, Id3Encoding.ISO88591);
+
+            currentPos += description.Length + TextEncodingHelper.GetSplitterBytes(Id3Encoding.ISO88591).Length;
+            frame.PictureData = new byte[bytes.Length - currentPos];
+            Array.Copy(bytes, currentPos, frame.PictureData, 0, frame.PictureData.Length);
+        }
     }
 }

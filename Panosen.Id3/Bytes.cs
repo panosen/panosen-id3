@@ -1,9 +1,15 @@
 namespace Panosen.Id3
 {
-    public static class SyncSafeNumber
+    /// <summary>
+    /// Bytes
+    /// </summary>
+    public static class Bytes
     {
 
-        public static byte[] EncodeNormal(int size)
+        /// <summary>
+        /// FromInt32Normal
+        /// </summary>
+        public static byte[] FromInt32Normal(int size)
         {
             var bytes = new byte[4];
             bytes[3] = (byte)(size & 0xFF);
@@ -13,7 +19,10 @@ namespace Panosen.Id3
             return bytes;
         }
 
-        public static int DecodeNormal(byte[] bytes, int start, int count)
+        /// <summary>
+        /// ToInt32Normal
+        /// </summary>
+        public static int ToInt32Normal(byte[] bytes, int start, int count)
         {
             int size = 0, shift = 0;
             for (int byteIdx = start + count - 1; byteIdx >= start; byteIdx--)
@@ -24,7 +33,10 @@ namespace Panosen.Id3
             return size;
         }
 
-        public static byte[] EncodeSafe(int size)
+        /// <summary>
+        /// int ת byte[]
+        /// </summary>
+        public static byte[] FromInt32Safe(int size)
         {
             var bytes = new byte[4];
             bytes[3] = (byte)(size & 0x7F);
@@ -34,12 +46,15 @@ namespace Panosen.Id3
             return bytes;
         }
 
-        internal static int DecodeSafe(byte[] bytes, int start, int count)
+        /// <summary>
+        /// byte[] ת int
+        /// </summary>
+        public static int ToInt32Safe(byte[] bytes, int start, int count)
         {
             int size = 0, shift = 0;
-            for (int byteIdx = start + count - 1; byteIdx >= start; byteIdx--)
+            for (int index = start + count - 1; index >= start; index--)
             {
-                size += bytes[byteIdx] << shift;
+                size += bytes[index] << shift;
                 shift += 7;
             }
             return size;

@@ -9,35 +9,32 @@ namespace Panosen.Id3
     /// <summary>
     /// ID3支持的编码
     /// </summary>
-    public enum Id3EncodingEnum
-    {
-        /// <summary>
-        /// iso-8859-1
-        /// </summary>
-        ISO88591,
-
-        /// <summary>
-        /// unicode
-        /// </summary>
-        Unicode
-    }
-
-    /// <summary>
-    /// ID3支持的编码
-    /// </summary>
     public class Id3Encoding
     {
+        static Id3Encoding()
+        {
+            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+            ISO88591 = new Id3Encoding { Encoding = Encoding.GetEncoding("iso-8859-1") };
+            Unicode = new Id3Encoding { Encoding = Encoding.Unicode };
+            GB2312 = new Id3Encoding { Encoding = Encoding.GetEncoding("gb2312") };
+        }
+
         public Encoding Encoding { get; private set; }
 
         /// <summary>
         /// iso-8859-1
         /// </summary>
-        public static Id3Encoding ISO88591 { get; } = new Id3Encoding { Encoding = Encoding.GetEncoding("iso-8859-1") };
+        public static Id3Encoding ISO88591 { get; private set; }
 
         /// <summary>
         /// unicode
         /// </summary>
-        public static Id3Encoding Unicode { get; } = new Id3Encoding { Encoding = Encoding.Unicode };
+        public static Id3Encoding Unicode { get; private set; }
+
+        /// <summary>
+        /// unicode
+        /// </summary>
+        public static Id3Encoding GB2312 { get; private set; }
     }
 
     public static class Id3EncodingExtension

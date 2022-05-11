@@ -12,11 +12,6 @@ namespace Panosen.Id3
     public enum FrameEnum
     {
         /// <summary>
-        /// NONE
-        /// </summary>
-        NONE,
-
-        /// <summary>
         /// #sec4.20|Audio encryption
         /// </summary>
         AENC,

@@ -1,149 +1,93 @@
-﻿using Panosen.Id3.Frames;
-using Panosen.Id3.Handlers;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using Panosen.Id3.Frames;
+
 namespace Panosen.Id3
 {
+    /// <summary>
+    /// StreamExtensionV23
+    /// </summary>
     public static class StreamExtensionV23
     {
-
-        private const int BufferSize = 8192;
-
-        private static readonly TextFrameHandler textFrameHandler = new TextFrameHandler();
-        private static readonly UrlLinkFrameHandler urlLinkFrameHandler = new UrlLinkFrameHandler();
-        private static readonly CommentFrameHandler commentFrameHandler = new CommentFrameHandler();
-        private static readonly CustomUrlLinkHandler customUrlLinkHandler = new CustomUrlLinkHandler();
-        private static readonly LyricsHandler lyricsHandler = new LyricsHandler();
-        private static readonly PictureHandler pictureHandler = new PictureHandler();
-        private static readonly PrivateHandler privateHandler = new PrivateHandler();
-
-        public static bool HasV23Tag(this Stream stream)
+        /// <summary>
+        /// 读取所有的 id3v2 标签
+        /// </summary>
+        public static Id3V23 ReadId3V23FromStream(this Stream stream)
         {
-            stream.Seek(0, SeekOrigin.Begin);
+            byte[] id3HeadBytes = stream.ReadBytes(10);
 
-            var headerBytes = new byte[5];
-            stream.Read(headerBytes, 0, 5);
-
-            string magic = Encoding.ASCII.GetString(headerBytes, 0, 3);
-            return magic == "ID3" && headerBytes[3] == 3;
-        }
-
-        public static int GetV23TagLength(this Stream stream)
-        {
-            if (!stream.HasV23Tag())
-            {
-                return 0;
-            }
-
-            var sizeBytes = new byte[4];
-            stream.Seek(6, SeekOrigin.Begin);
-            stream.Read(sizeBytes, 0, 4);
-            int tagSize = SyncSafeNumber.DecodeSafe(sizeBytes, 0, 4);
-
-            return tagSize + 10;
-        }
-
-        public static byte[] GetAllV23TagBytes(this Stream stream)
-        {
-            if (!stream.HasV23Tag())
+            //ID3 byte[3]
+            if (id3HeadBytes[0] != 0x49 || id3HeadBytes[1] != 0x44 || id3HeadBytes[2] != 0x33)
             {
                 return null;
             }
 
-            var sizeBytes = new byte[4];
-            stream.Seek(6, SeekOrigin.Begin);
-            stream.Read(sizeBytes, 0, 4);
-            int tagSize = SyncSafeNumber.DecodeSafe(sizeBytes, 0, 4);
+            Id3V23 id3v23 = new Id3V23();
 
-            var tagBytes = new byte[tagSize + 10];
-            stream.Seek(0, SeekOrigin.Begin);
-            stream.Read(tagBytes, 0, tagBytes.Length);
-            return tagBytes;
-        }
+            //version byte[2]
+            id3v23.MajorVersion = id3HeadBytes[3];
+            id3v23.RevisionVersion = id3HeadBytes[4];
 
-        public static Id3V2 ReadAllV23Tags(this Stream stream)
-        {
-            if (!stream.HasV23Tag())
+            //flag byte[1]
+            id3v23.Unsyncronization = (id3HeadBytes[5] & 0x80) > 0;
+            id3v23.ExtendedHeader = (id3HeadBytes[5] & 0x40) > 0;
+            id3v23.Experimental = (id3HeadBytes[5] & 0x20) > 0;
+
+            if (id3v23.ExtendedHeader)
             {
-                return null;
-            }
+                var extendedHeaderBytes = stream.ReadBytes(10);
+                var ExtendedHeaderSize = Bytes.ToInt32Safe(extendedHeaderBytes, 0, 4);
+                var extendedFlags = new byte[2] { extendedHeaderBytes[4], extendedHeaderBytes[5] };
+                id3v23.PaddingSize = Bytes.ToInt32Normal(extendedHeaderBytes, 6, 4);
 
-            Id3V2 id3V2 = new Id3V2();
-
-            stream.Seek(4, SeekOrigin.Begin);
-            var headerBytes = new byte[6];
-            stream.Read(headerBytes, 0, 6);
-
-            byte flags = headerBytes[1];
-
-            id3V2.Revision = headerBytes[0];
-            id3V2.Unsyncronization = (flags & 0x80) > 0;
-            id3V2.ExtendedHeader = (flags & 0x40) > 0;
-            id3V2.Experimental = (flags & 0x20) > 0;
-
-            int tagSize = SyncSafeNumber.DecodeSafe(headerBytes, 2, 4);
-            var tagData = new byte[tagSize];
-            stream.Read(tagData, 0, tagSize);
-
-            var currentPos = 0;
-            if (id3V2.ExtendedHeader)
-            {
-                SyncSafeNumber.DecodeSafe(tagData, currentPos, 4);
-                currentPos += 4;
-
-                id3V2.PaddingSize = SyncSafeNumber.DecodeNormal(tagData, currentPos + 2, 4);
-
-                if ((tagData[currentPos] & 0x80) > 0)
+                if ((extendedHeaderBytes[4] & 0x80) > 0)
                 {
-                    id3V2.Crc32 = SyncSafeNumber.DecodeNormal(tagData, currentPos + 6, 4);
-                    currentPos += 10;
-                }
-                else
-                {
-                    currentPos += 6;
+                    var crc32Bytes = stream.ReadBytes(4);
+                    id3v23.Crc32 = Bytes.ToInt32Normal(crc32Bytes, 0, crc32Bytes.Length);
                 }
             }
 
-            while (currentPos < tagSize && tagData[currentPos] != 0x00)
+            //size byte[4]
+            id3v23.BytesLength = Bytes.ToInt32Safe(id3HeadBytes, 6, 4);
+            int index = 0;
+            while (index < id3v23.BytesLength)
             {
-                string frameId = Encoding.ASCII.GetString(tagData, currentPos, 4);
-                currentPos += 4;
+                byte[] frameHeadBytes = stream.ReadBytes(10);
+                var frameId = Encoding.ASCII.GetString(frameHeadBytes, 0, 4);
+                var frameLength = Bytes.ToInt32Safe(frameHeadBytes, 4, 4);
 
-                int frameSize = SyncSafeNumber.DecodeNormal(tagData, currentPos, 4);
-                currentPos += 4;
+                byte[] frameBodyBytes = stream.ReadBytes(frameLength);
 
-                byte[] frameFlags = new byte[2] { tagData[currentPos], tagData[currentPos + 1] };
-                currentPos += 2;
-
-                var frameData = new byte[frameSize];
-                Array.Copy(tagData, currentPos, frameData, 0, frameSize);
-
-                var frame = Decode(frameId, frameFlags, frameData);
+                var frame = DecodeFrame(frameId, frameBodyBytes);
                 if (frame != null)
                 {
-                    id3V2.AddFrame(frame);
+                    id3v23.AddFrame(frame);
                 }
 
-                currentPos += frameSize;
+                index += frameLength;
             }
 
-            return id3V2;
+            return id3v23;
         }
 
-        public static Id3Frame Decode(string frameId, byte[] frameFlags, byte[] bytes)
+        /// <summary>
+        /// DecodeFrame
+        /// </summary>
+        public static Id3Frame DecodeFrame(string frameId, byte[] bytes)
         {
             switch (frameId)
             {
                 case FrameConstant.TALB:
                 case FrameConstant.TPE1:
+                case FrameConstant.TPE2:
+                case FrameConstant.TPE3:
                 case FrameConstant.TBPM:
                 case FrameConstant.TCOM:
-                case FrameConstant.TPE3:
                 case FrameConstant.TIT1:
                 case FrameConstant.TCOP:
                 case FrameConstant.TXXX:
@@ -158,14 +102,18 @@ namespace Panosen.Id3
                 case FrameConstant.TDAT:
                 case FrameConstant.TIT3:
                 case FrameConstant.TIT2:
-                case FrameConstant.TRCK:
+                case FrameConstant.TKEY:
+                    {
+                        return FrameHandlerFactory.textFrameHandler.Decode(frameId, bytes);
+                    }
                 case FrameConstant.TYER:
                     {
-                        if (bytes.Length == 1)
-                        {
-                            return null;
-                        }
-                        return textFrameHandler.Decode(frameId, bytes);
+                        return FrameHandlerFactory.yearFrameHandler.Decode(frameId, bytes);
+                    }
+                case FrameConstant.TRCK:
+                case FrameConstant.TPOS:
+                    {
+                        return FrameHandlerFactory.tposFrameHandler.Decode(frameId, bytes);
                     }
                 case FrameConstant.WOAR:
                 case FrameConstant.WOAF:
@@ -174,165 +122,33 @@ namespace Panosen.Id3
                 case FrameConstant.WCOP:
                 case FrameConstant.WPAY:
                     {
-                        return urlLinkFrameHandler.Decode(frameId, bytes);
+                        return FrameHandlerFactory.urlLinkFrameHandler.Decode(frameId, bytes);
                     }
                 case FrameConstant.COMM:
                     {
-                        //var frame = commentFrameHandler.Decode(frameId, bytes);
-                        //return frame;
-                        return null;
+                        return FrameHandlerFactory.commentFrameHandler.Decode(frameId, bytes);
                     }
                 case FrameConstant.WXXX:
                     {
-                        return customUrlLinkHandler.Decode(frameId, bytes);
+                        return FrameHandlerFactory.customUrlLinkHandler.Decode(frameId, bytes);
                     }
                 case FrameConstant.USLT:
                     {
-                        return lyricsHandler.Decode(frameId, bytes);
+                        return FrameHandlerFactory.lyricsHandler.Decode(frameId, bytes);
                     }
                 case FrameConstant.APIC:
                     {
-                        return pictureHandler.Decode(frameId, bytes);
+                        //return FrameHandlerFactory.pictureHandler.Decode(frameId, bytes);
+                        return null;
                     }
                 case FrameConstant.PRIV:
                     {
-                        return privateHandler.Decode(frameId, bytes);
+                        return FrameHandlerFactory.privateHandler.Decode(frameId, bytes);
                     }
                 default:
-                    return null;
-            }
-        }
-
-        public static byte[] Encode<TEntity>(Id3Frame frame)
-        {
-            switch (frame.FrameId)
-            {
-                case FrameEnum.TALB:
-                case FrameEnum.TPE1:
-                case FrameEnum.TBPM:
-                case FrameEnum.TCOM:
-                case FrameEnum.TPE3:
-                case FrameEnum.TIT1:
-                case FrameEnum.TCOP:
-                case FrameEnum.TXXX:
-                case FrameEnum.TENC:
-                case FrameEnum.TSSE:
-                case FrameEnum.TOWN:
-                case FrameEnum.TFLT:
-                case FrameEnum.TCON:
-                case FrameEnum.TLEN:
-                case FrameEnum.TEXT:
-                case FrameEnum.TPUB:
-                case FrameEnum.TDAT:
-                case FrameEnum.TIT3:
-                case FrameEnum.TIT2:
-                case FrameEnum.TRCK:
-                case FrameEnum.TYER:
                     {
-                        return textFrameHandler.Encode(frame as TextFrame);
+                        return null;
                     }
-                case FrameEnum.WOAR:
-                case FrameEnum.WOAF:
-                case FrameEnum.WOAS:
-                case FrameEnum.WCOM:
-                case FrameEnum.WCOP:
-                case FrameEnum.WPAY:
-                    {
-                        return urlLinkFrameHandler.Encode(frame as UrlLinkFrame);
-                    }
-                case FrameEnum.COMM:
-                    {
-                        return commentFrameHandler.Encode(frame as CommentFrame);
-                    }
-                case FrameEnum.WXXX:
-                    {
-                        return customUrlLinkHandler.Encode(frame as CustomUrlLinkFrame);
-                    }
-                case FrameEnum.USLT:
-                    {
-                        return lyricsHandler.Encode(frame as LyricsFrame);
-                    }
-                case FrameEnum.APIC:
-                    {
-                        return pictureHandler.Encode(frame as PictureFrame);
-                    }
-                case FrameEnum.PRIV:
-                    {
-                        return privateHandler.Encode(frame as PrivateFrame);
-                    }
-                default:
-                    return null;
-            }
-        }
-
-        public static void WriteAllTags(Stream stream, Id3V2 id3V2)
-        {
-            byte[] tagBytes = GetTagBytes(id3V2);
-            int requiredTagSize = tagBytes.Length;
-            if (stream.HasV23Tag())
-            {
-                int currentTagSize = GetV23TagLength(stream);
-                if (requiredTagSize > currentTagSize)
-                {
-                    MakeSpaceForTag(stream, currentTagSize, requiredTagSize);
-                }
-            }
-            else
-            {
-                MakeSpaceForTag(stream, 0, requiredTagSize);
-            }
-
-            stream.Seek(0, SeekOrigin.Begin);
-            stream.Write(tagBytes, 0, requiredTagSize);
-            stream.Flush();
-        }
-
-        private static byte[] GetTagBytes(Id3V2 tag)
-        {
-            var bytes = new List<byte>();
-            bytes.AddRange(Encoding.ASCII.GetBytes("ID3"));
-            bytes.AddRange(new byte[] { 3, 0, 0 });
-
-            ////////foreach (Id3Frame frame in tag)
-            ////////{
-            ////////    if (!frame.IsAssigned)
-            ////////        continue;
-            ////////    FrameHandler mapping = FrameHandlers[frame.GetType()];
-            ////////    if (mapping == null)
-            ////////        continue;
-            ////////    byte[] frameBytes = mapping.Encoder(frame);
-            ////////    bytes.AddRange(Encoding.ASCII.GetBytes(GetFrameIdFromFrame(frame)));
-            ////////    bytes.AddRange(SyncSafeNumber.EncodeNormal(frameBytes.Length));
-            ////////    bytes.AddRange(new byte[] { 0, 0 });
-            ////////    bytes.AddRange(frameBytes);
-            ////////}
-
-
-            int framesSize = bytes.Count - 6;
-            bytes.InsertRange(6, SyncSafeNumber.EncodeSafe(framesSize));
-            return bytes.ToArray();
-        }
-
-        private static void MakeSpaceForTag(Stream stream, int currentTagSize, int requiredTagSize)
-        {
-            if (currentTagSize >= requiredTagSize)
-                return;
-
-            int increaseRequired = requiredTagSize - currentTagSize;
-            var readPos = (int)stream.Length;
-            int writePos = readPos + increaseRequired;
-            stream.SetLength(writePos);
-
-            var buffer = new byte[BufferSize];
-            while (readPos > currentTagSize)
-            {
-                int bytesToRead = (readPos - BufferSize < currentTagSize) ? readPos - currentTagSize : BufferSize;
-                readPos -= bytesToRead;
-                stream.Seek(readPos, SeekOrigin.Begin);
-                stream.Read(buffer, 0, bytesToRead);
-                writePos -= bytesToRead;
-                stream.Seek(writePos, SeekOrigin.Begin);
-                stream.Write(buffer, 0, bytesToRead);
             }
         }
     }
